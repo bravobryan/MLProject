@@ -47,7 +47,7 @@ job.commit()
 
 # fred_api = hardcoded_keys.FRED_API_KEY
 fred_api = args['FRED_API_KEY']
-end_date = (dt.now() - relativedelta(days=1)).strftime("%Y-%m-%d")
+end_date = (dt.now().replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
 
 out_path = 's3a://ml-project-s3-bronze/input_folder/'
 
