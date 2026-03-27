@@ -1,6 +1,6 @@
-# # Import Geopolitical Risk Index (GPR)
+# # Import International Monetary Fund (IMF) data
 # - Author: Bryan Bravo
-# - Created: 2026-03-23
+# - Created: 2026-03-19
 # ## Import Libraries
 
 ########################## AWS Glue environment #######################################
@@ -21,6 +21,8 @@ from pyspark.sql import (
     SparkSession,
     DataFrame
 )
+
+import sdmx
 
 # AWS Glue spec. libraries
 import sys
@@ -46,9 +48,9 @@ job.commit()
 end_date = (dt.now().replace(day=1) - relativedelta(days=1)).strftime("%Y-%m-%d")
 out_path = 's3a://ml-project-s3-bronze/input_folder/'
 
-
 ## Query
-# Map country with country code
+
+
 country_mapping = {
     'australia': 'AUS',
     'brazil': 'BRA',
@@ -68,45 +70,41 @@ country_mapping = {
     'united_kingdom': 'GBR',
     'united_states': 'USA'
 }
+countries = [country for country in country_mapping.values()]
 
-# Import `xls` from website
-raw_df = pd.read_excel("https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls",
-                       header=0,
-                       engine='xlrd')
-raw_df.columns = [col.lower() for col in raw_df.columns]
+key = f"{'+'.join(countries)}.CPI._T.IX.M"
 
-# subset df to include dates after `2006-01-01`
-raw_df = raw_df.loc[:, 'month':'gprhc_zaf']
-raw_df['month'] = raw_df['month'].dt.strftime('%Y%m%d').astype(int)
-raw_df = raw_df[raw_df['month']>=20060101]
+print(f"Requesting data for key: {key} starting {2006}...")
+IMF_DATA = sdmx.Client('IMF_DATA')
+try:
+    data_msg = IMF_DATA.data('CPI', key=key, params={'startPeriod': 2006, 'endPeriod': end_date[0:4]})
+except Exception as e:
+    print(f"An error occurred: {e}")
+    exit()
 
-# Convert pandas df to spark df
-gpr_df = spark.createDataFrame(raw_df)
+cpi_df = sdmx.to_pandas(data_msg).reset_index()
 
-# Melt country columns into a single `gpr_index` variable
-gpr_df = (
-    gpr_df.melt(
-        ids=['month'], 
-        values=[f"gprc_{country_code.lower()}" for country_code in country_mapping.values()],
-        variableColumnName='country', valueColumnName='gpr_index'
-    )
-)
+cpi_df.columns = [col.lower() for col in cpi_df.columns]
+# Subset columns for use
+cpi_df = cpi_df[['time_period', 'country', 'value']]
 
-# remap values in `country` variable.
-gpr_df = (
-    gpr_df
-    .withColumn('country', F.split(F.col('country'), '_')[1])
-    .replace({cntry_code.lower(): cntry_name for cntry_name, cntry_code in country_mapping.items()}, subset=['country'])
-)
+# Extract year and Month
+cpi_df[['year', 'month']] = cpi_df['time_period'].str.split('-', expand=True)
+cpi_df['year'] = cpi_df['year'].astype(int)
+cpi_df['month'] = cpi_df['month'].str[1:].astype(int)
 
-# separate joining variables
-gpr_df = (
-    gpr_df
-    .withColumns({
-        'year': F.substring(F.col('month').cast('string'), 1, 4).cast('int'),
-        'month': F.substring(F.col('month').cast('string'), 5, 2).cast('int')
-    })
-    .select('country', 'year', 'month', 'gpr_index')
-)
 
-gpr_df.write.mode('overwrite').parquet(f"{out_path}/gpr.parquet")
+# Remap countries
+cpi_df['country'] = cpi_df['country'].map({
+    code: cntry for cntry, code in country_mapping.items()
+})
+
+cpi_df.drop('time_period', axis=1, inplace=True)
+
+# Convert to Spark DF
+cpi_df = spark.createDataFrame(cpi_df)
+cpi_df.repartition(10).cache().count()
+
+
+cpi_df.write.mode('overwrite').parquet(f'{out_path}/cpi.parquet')
+spark.stop()
