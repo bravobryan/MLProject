@@ -51,7 +51,6 @@ out_path = 's3a://ml-project-s3-bronze/input_folder/'
 
 CLIENT_ID = args['UNCTAD_CLIENT_ID']
 CLIENT_SECRET = args['UNCTAD_API_KEY']
-TEMP_FILE_PATH = "s3a://ml-project-s3-bronze/excel_files/"  # to produce csv for import
 
 country_mapping = {
     'australia': 'AUS',
@@ -74,8 +73,6 @@ country_mapping = {
 }
 
 ### Import LSCI 
-
-
 
 # Configuration
 URL = "https://unctadstat-user-api.unctad.org/US.LSCI_M/cur/Facts?culture=en"
@@ -121,62 +118,35 @@ FORM = {
 HEADERS = {
     "ClientId": CLIENT_ID,
     "ClientSecret": CLIENT_SECRET,
-    # Optional: set a user agent
     "User-Agent": "python-unctad-client/1.0",
 }
 
-
-def fetch_and_save(url: str, form: dict, headers: dict, out_path: str) -> None:
-    """
-    POST the form and stream the gzipped CSV to out_path.
-    """
-    with requests.post(url, data=form, headers=headers, stream=True, timeout=60) as resp:
-        resp.raise_for_status()
-        # Write streamed content to file
-        with open(out_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-
-
-def load_gz_csv_to_dataframe(gz_path: str) -> pd.DataFrame:
-    """
-    Read a gzipped CSV into a pandas DataFrame with appropriate dtypes.
-    """
-    # pandas can read gzip directly
-    df = pd.read_csv(gz_path, compression="gzip", header=0, na_values="", encoding="utf-8")
-    # Ensure column types similar to R colClasses
-    # If columns exist, coerce types
-    expected_cols = [
-        "Economy/Label",
-        "Month/Label",
-        "Index_Average_M2_2023__100_Value",
-        "Index_Average_M2_2023__100_Footnote",
-        "Index_Average_M2_2023__100_MissingValue",
-    ]
-    # Rename columns to simpler names if desired
-    df.columns = [c.strip().lower() for c in df.columns]
-    return df
-
-
-def import_lsci():
-    try:
-        print("Requesting UNCTAD LSCI data...")
-        fetch_and_save(URL, FORM, HEADERS, TEMP_FILE_PATH)
-        print(f"Saved compressed CSV to {TEMP_FILE_PATH}")
-        df = load_gz_csv_to_dataframe(TEMP_FILE_PATH)
-        print("Loaded DataFrame with shape:", df.shape)
-        # Show first rows
-        print(df.head().to_string(index=False))
-        return df
-    except requests.HTTPError as e:
-        print("HTTP error:", e, file=sys.stderr)
-    except Exception as e:
-        print("Error:", e, file=sys.stderr)
-
-lsci_df = import_lsci()[['economy_label', 'month_label', 'index_average_m2_2023__100_value']]
-# rename columns
-lsci_df.columns = ['country', 'month_label', 'lsci']
+# Fetch data and load directly into memory
+try:
+    print("Requesting UNCTAD LSCI data...")
+    response = requests.post(URL, data=FORM, headers=HEADERS, stream=True, timeout=60)
+    response.raise_for_status()
+    
+    # Decompress gzipped response in-memory
+    decompressed_data = gzip.decompress(b"".join(response.iter_content(chunk_size=8192)))
+    
+    # Read CSV directly from decompressed bytes without writing to disk
+    lsci_df = pd.read_csv(io.BytesIO(decompressed_data), header=0, na_values="", encoding="utf-8")
+    
+    # Standardize column names
+    lsci_df.columns = [c.strip().lower() for c in lsci_df.columns]
+    
+    print("Loaded DataFrame with shape:", lsci_df.shape)
+    print(lsci_df.head().to_string(index=False))
+    
+    # Select and rename relevant columns
+    lsci_df = lsci_df[['economy_label', 'month_label', 'index_average_m2_2023__100_value']]
+    lsci_df.columns = ['country', 'month_label', 'lsci']
+    
+except requests.HTTPError as e:
+    print("HTTP error:", e, file=sys.stderr)
+except Exception as e:
+    print("Error:", e, file=sys.stderr)
 
 
 # lowercase country and w/trim country and month_label
