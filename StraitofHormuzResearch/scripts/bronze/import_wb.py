@@ -2,6 +2,7 @@
 
 # - Author: Bryan Bravo
 # - Created: 2026-03-24
+# - Modified by Bryan Bravo on 2026-04-03: Adjusted time period for imports data to start from 2005 to capture more historical data, as some countries have missing values for 2006. Also added filtering to include only USD values for FX reserves, as there are additional rows with unit measure 'XDR' that are not relevant for our analysis.
 # ## Import Libraries
 
 ########################## AWS Glue environment #######################################
@@ -81,6 +82,9 @@ def import_wb_fx_reserves(country_code, end_date):
 
     wb_df = pd.DataFrame(wb_data['value'])
     wb_df.columns = [col.lower() for col in wb_df.columns]
+    ## Corrected on 04-03-2026: 
+        # There are additional rows where the unit measure has ['USD', 'XDR'], filtering to include only USD values.
+    wb_df = wb_df[wb_df['unit_measure'] == 'USD'] 
     wb_df = wb_df[['obs_value', 'ref_area', 'time_period']]
     return wb_df
 
@@ -103,7 +107,7 @@ fx_df = fx_df[['country', 'year', 'month', 'fx_reserves']]
 def import_wb_imports_dol(country_code, end_date):
     response = requests.get(
         f"https://data360api.worldbank.org/data360/data?DATABASE_ID=WB_WDI&INDICATOR=WB_WDI_NE_IMP_GNFS_CD&REF_AREA={country_code}" +
-        f"&timePeriodFrom=2006-01&timePeriodTo={end_date[:4]}&skip=0"
+        f"&timePeriodFrom=2005-01&timePeriodTo={end_date[:4]}&skip=0"  # Corrected on 04-03-2026: Adjusted time period to start from 2005 to capture more historical data, as some countries have missing values for 2006.
     )
     wb_data = response.json()
 
