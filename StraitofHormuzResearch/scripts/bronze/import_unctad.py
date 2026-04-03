@@ -2,6 +2,7 @@
 
 # - Author: Bryan Bravo
 # - Created: 2026-03-24
+# - Modified by Bryan Bravo: 2026-04-03 -- refactored to filter for countries correctly and ensure country names are standardized to match the country_mapping keys.
 # ## Import Libraries
 
 ########################## AWS Glue environment #######################################
@@ -162,11 +163,28 @@ lsci_df['month'] = lsci_df['month'].map({
                              'jul', 'aug', 'sep', 'oct', 'nov', 'dec'])
 }).astype(int)
 
-# Filter for countries in the analysis
-lsci_df = lsci_df[lsci_df['country'].isin(country_name for country_name in country_mapping.keys())]
+## Refactored on 04-03-2026 -- filtered for countries countries correctly 
+#### and ensured country names are standardized to match the country_mapping keys.  
+# Convert to Spark DataFrame and filter for countries in the analysis
+lsci_spark = spark.createDataFrame(lsci_df)
 
-# Convert to Spark Df
-lsci_df = spark.createDataFrame(lsci_df[['country', 'year', 'month', 'lsci']])
-lsci_df.repartition(10).cache().count()
+lsci_spark = (
+    lsci_spark
+    .withColumn("country", F.regexp_replace(F.trim('country'), ' ', '_'))
+    .filter(
+        F.col('country').isin([country for country in country_mapping.keys()])
+        # Filter for specific countries
+        | F.col('country').contains('russian_federation') | F.col('country').contains('republic_of_korea')
+    )
+    .withColumn('country',  # remap russia and south korea to match the country_mapping keys
+                F.when(F.col('country').contains('russian_federation'), 'russia')
+                .when(F.col('country').contains('republic_of_korea'), 'south_korea')
+                .otherwise(F.col('country'))
+                )
+)
+
+# Cache the DataFrame to optimize subsequent operations
+lsci_df = lsci_spark.select('country', 'year', 'month', 'lsci')
+lsci_df.repartition(10).cache().count()  # Force caching and check count to ensure data is loaded and cached properly.
 
 lsci_df.write.mode('overwrite').parquet(f'{out_path}/lsci.parquet')
