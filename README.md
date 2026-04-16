@@ -9,7 +9,7 @@ Tech Stack:
 - Git + GitHub
 - Kaggle (for dataset distribution)
 
-Repository Structure:
+## Repository Structure:
 ```
 ml_missing_value_impute/
     hardcoded_keys.py (not stored in repo)
@@ -41,7 +41,7 @@ ml_missing_value_impute/
         wb.csv
 ```
 
-Executive Summary
+## Executive Summary
 
 - Business Question: Can these indicators (oil prices, LSCI, GPR, events, CPI, rates, FX) forecast near-term changes in a country's FX reserves for treasury/planning decisions?
 
@@ -57,7 +57,7 @@ Executive Summary
 
 - Benefit of the Analysis: Provides a practical way to fill gaps in indicator series, enabling more complete datasets for forecasting, planning, and scenario analysis—leading to faster, more informed decisions.
 
-Machine Learning Skills Demonstrated:
+## Machine Learning Skills Demonstrated:
 - Data ingestion from multiple APIs and CSV sources; handling authentication-sensitive code outside the repo (`import_datasets/` and `hardcoded_keys.py` not stored)
 - Time-series alignment and aggregation (handling monthly vs daily frequencies)
 - Feature engineering per-country to improve model relevance
@@ -72,5 +72,3 @@ Notes
 - Run order: execute all notebooks under `notebooks/import_data/` first (these collect and save raw inputs), then run the notebooks under `notebooks/transform/`, leaving `notebooks/transform/impute_missing_data.ipynb` as the final notebook to run.
 - All produced datasets in `processed_datasets/` are intended to be uploaded to Kaggle for public reuse.
 
-Contact / Next Steps
-- If you want, I can add a short `requirements.txt`, quick run instructions, or a small example script to run the imputation pipeline end-to-end.
