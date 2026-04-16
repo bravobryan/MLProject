@@ -42,37 +42,66 @@ ml_missing_value_impute/
 
 # Executive Summary
 
-- **Business Question:** 
-    - Can these indicators (oil prices, LSCI, GPR, events, CPI, rates, FX) forecast near-term changes in a country's FX reserves for treasury/planning decisions?
+### Business Question: 
+#####  Can these indicators (oil prices, LSCI, GPR, events, CPI, rates, FX) forecast near-term changes in a country's FX reserves for treasury/planning decisions?
 
-- **Problem and Context:** 
-    - For businesses using industry analysis and financial forecasting to inform strategy, lagging or incomplete indicator data can degrade decision quality. In today’s highly competitive economic landscape, businesses need to make quick, data-driven decisions to remain relevant. 
-    
-    - Using imputation and predictive models helps fill gaps and enables more data-focused, timely strategy and positioning decisions. The complexity of operating in a global economic environment can make it challenging to determine how to position a strategy across major economies.
+### Problem and Context: 
+For businesses using industry analysis and financial forecasting to inform strategy, lagging or incomplete indicator data can degrade decision quality. In today’s highly competitive economic landscape, businesses need to make quick, data-driven decisions to remain relevant. 
+
+Using imputation and predictive models helps fill gaps and enables more data-focused, timely strategy and positioning decisions. The complexity of operating in a global economic environment can make it challenging to determine how to position a strategy across major economies.
 
 ## Summary of the Machine Learning process:
 ### Sourced Data
 Data is gathered from multiple APIs and sources (some monthly, some daily) using the notebooks in `import_data`. 
 
-- Sources:
-  - ACLED: This includes all global battles, explosions/remote violence, and violence against civilians events.
-    - acleddata.com
-  - US Energy Information Administration (EIA) daily oil price: Imported daily spot pricing for Brent Crude Oil and WTI Crude Oil. 
-    - eia.gov
-  - Federal Reserve Bank of St. Louis (FRED): Fetched the daily foreign spot exchange rate and daily interest rates for each country.
-    - https://fred.stlouisfed.org/
-  - Geopolitical Risk Index (GPR): The Caldara and Iacoviello GPR index is calculated monthly by measuring the share of articles related to adverse geopolitical events across 10 major newspapers.
-    - https://www.matteoiacoviello.com/gpr_files/data_gpr_export.xls
-  - International Monetary Fund: Imported monthly Consumer Price Index (CPI) for each country.
-    - imf.org
-  - UN Trade and Development (UNCTAD): Imported the Liner Shipping Connectivity Index, which measures each country’s integration into global liner shipping networks.
-    - unctadstat.unctad.org
-  - World Bank: Fetched each country's monthly Foreign Exchange Reserves.
-    - worldbank.org 
+Sources:
+- ACLED: This includes all global battles, explosions/remote violence, and violence against civilians events.
+
+Inspected missing brent_dollars_per_barrel and wti_dollars_per_barrel (occurred on market/non-trading days) and applied forward-fill per country using a window (W.partitionBy('country').orderBy('date') + F.last(..., ignorenulls=True)).
+ACLED (events):
+
+Treated missing events as 0 (F.when(...).otherwise(0)).
+Since acled_df is monthly vs daily base df, kept event counts only on the last day of each month per country (row_number over partition → keep last_events==1, set others to 0).
+CPI:
+
+For missing Australian CPI, imported import_datasets/australiancpi.csv, parsed quarter months, joined it in and coalesced into cpi.
+Applied a special correction for early 2006 (cpi = 84.5 for a specific Australia window), then forward-filled cpi by country ordered by year, month using F.last(..., ignorenulls=True).
 
 ### Data Preparation
+Data cleaning and transformations are done in the `transform` notebooks (primary work in `joined_input.ipynb`; some one-hot encoding in `impute_missing_data.ipynb`).
 
-- Data is gathered from multiple APIs and sources (some monthly, some daily) using the notebooks in `import_data`. Data cleaning and transformations are performed in the `transform` notebooks. Missing values are handled via targeted Random Forest Regressor models: each country's missing-value imputation model is trained with the most relevant features for that country. Models were tuned using `GridSearchCV` and implemented with both pandas (local) and PySpark (distributed) workflows as a demonstration of versatility.
+Most missing-value handling is applied during dataset joins. Condensed, GitHub-friendly summary:
+
+- **FRED + Oil**
+    - Left-joined on `date`; duplicates checked.
+    - Missing `brent_dollars_per_barrel` and `wti_dollars_per_barrel` (market/non-trading days) are forward-filled per country with a window: `W.partitionBy('country').orderBy('date')` + `F.last(..., ignorenulls=True)`.
+    - Outlier detection: `detect_outliers_by_partition` on `interest_rate`, `fx_rate`, `brent_dollars_per_barrel`, `wti_dollars_per_barrel` (partitioned by `country`, `year`).
+
+- **ACLED (`events`)**
+    - Joined on `['year','month','country']`.
+    - Missing `events` interpreted as `0` (assumed no recorded events).
+    - Because `acled_df` is monthly vs a daily base, `events` are kept only on the last day of each month per country (row_number over partition → keep last), other days set to `0`.
+    - Outlier detection applied to `events` to highlight notable political shocks.
+
+- **CPI**
+    - Renamed source `value` → `cpi` and joined on `['year','month','country']`.
+    - For missing Australian CPI, imported `import_datasets/australiancpi.csv` (quarterly) and expanded/coalesced values into monthly `cpi`.
+    - Applied a small early-2006 correction for Australia and forward-filled `cpi` per country (ordered by `year, month`).
+
+- **GPR**
+    - Joined on `['year','month','country']`; no additional missingness required after join.
+
+- **LSCI**
+    - Joined on `['year','month','country']`.
+    - Reporting frequency changed (quarterly → monthly); forward-fill used per country (`F.last(..., ignorenulls=True)` over `W.partitionBy('country').orderBy('year','month')`).
+    - Applied targeted 2006 fixes and seeded missing March/April 2006 values for Australia using a lookup (`lsci_dict`).
+    - Removed inconsistent early data (filtered out dates on or before `2006-04-30`).
+
+Notes:
+- Forward-fill is used where values are expected to hold until the next report (e.g., index benchmarks, quarterly-to-monthly conversions).
+- Larger temporal gaps (notably `fx_reserves`) are handled with ML imputation in `impute_missing_data.ipynb` rather than simple propagation.
+
+
 
 - **Limitations of the Analysis:** 
     - Feature relevance varies by country so results are heterogeneous; model performance depends on historical data quality and coverage. Temporal mismatches (monthly vs daily) require aggregation/aligning choices that can introduce bias. Imputation may not capture structural breaks or regime changes.
