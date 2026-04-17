@@ -53,24 +53,26 @@ Using imputation and predictive models helps fill gaps and enables more data-foc
 ## Summary of the Machine Learning process:
 ### Sourced Data
 Data is gathered from multiple APIs and sources (some monthly, some daily) using the notebooks in `import_data`. 
-
-Sources:
-- ACLED: This includes all global battles, explosions/remote violence, and violence against civilians events.
-
-Inspected missing brent_dollars_per_barrel and wti_dollars_per_barrel (occurred on market/non-trading days) and applied forward-fill per country using a window (W.partitionBy('country').orderBy('date') + F.last(..., ignorenulls=True)).
-ACLED (events):
-
-Treated missing events as 0 (F.when(...).otherwise(0)).
-Since acled_df is monthly vs daily base df, kept event counts only on the last day of each month per country (row_number over partition → keep last_events==1, set others to 0).
-CPI:
-
-For missing Australian CPI, imported import_datasets/australiancpi.csv, parsed quarter months, joined it in and coalesced into cpi.
-Applied a special correction for early 2006 (cpi = 84.5 for a specific Australia window), then forward-filled cpi by country ordered by year, month using F.last(..., ignorenulls=True).
+#### Sources:
+* **ACLED:** This includes all global battles, explosions/remote violence, and violence against civilians events.
+    * acleddata.com
+* **US Energy Information Administration (EIA) daily oil price:** Imported daily spot pricing for Brent Crude Oil and WTI Crude Oil. 
+    * eia.gov
+* **Federal Reserve Bank of St. Louis (FRED):** Fetched the daily foreign spot exchange rate and daily interest rates for each country.
+    * fred.stlouisfed.org
+* **Geopolitical Risk Index (GPR):** The Caldara and Iacoviello GPR index is calculated monthly by measuring the share of articles related to adverse geopolitical events across 10 major newspapers.
+    * www.matteoiacoviello.com/gpr_files/data_gpr_export.xls
+* **International Monetary Fund:** Imported monthly Consumer Price Index (CPI) for each country.
+    * imf.org
+* **UN Trade and Development (UNCTAD):** Imported the Liner Shipping Connectivity Index, which measures each country’s integration into global liner shipping networks.
+    * unctadstat.unctad.org
+* **World Bank:** Fetched each country's monthly Foreign Exchange Reserves.
+    * worldbank.org 
 
 ### Data Preparation
 Data cleaning and transformations are done in the `transform` notebooks (primary work in `joined_input.ipynb`; some one-hot encoding in `impute_missing_data.ipynb`).
 
-Most missing-value handling is applied during dataset joins. Condensed, GitHub-friendly summary:
+Most missing-value handling is applied during dataset joins. Condensed:
 
 - **FRED + Oil**
     - Left-joined on `date`; duplicates checked.
@@ -99,12 +101,21 @@ Most missing-value handling is applied during dataset joins. Condensed, GitHub-f
 
 Notes:
 - Forward-fill is used where values are expected to hold until the next report (e.g., index benchmarks, quarterly-to-monthly conversions).
-- Larger temporal gaps (notably `fx_reserves`) are handled with ML imputation in `impute_missing_data.ipynb` rather than simple propagation.
 
+### ML Imputation
 
+`fx_reserves` had a larger temporal gap, and was handled with ML imputation using Random Forest Regression models tailored per country in `impute_missing_data.ipynb` rather than simple propagation. 
 
-- **Limitations of the Analysis:** 
-    - Feature relevance varies by country so results are heterogeneous; model performance depends on historical data quality and coverage. Temporal mismatches (monthly vs daily) require aggregation/aligning choices that can introduce bias. Imputation may not capture structural breaks or regime changes.
+The large temporal gap is due to missing data for `2024-06` and beyond, as the World Bank has yet to release data for those months, creating a reporting lag. Because of the lag in data, ML imputation is effective, as the large window of missing data can create unrealistic flatlines from forward-fill imputation. The Random Forest Regressor can incorporate other features in the dataset to produce a more accurate estimate of what to expect for that window of missing data. 
+
+Before training the Random Forest Regression models, the best features were selected for each country using the p-values computed with the sklearn.feature_selection.f_regression() function. The features with p-values less than 0.05 were selected for each country.
+
+Each country had its own Random Forest model trained and cross-validated across multiple hyperparameters to select the best model for predictions. The cross-validated model with the lowest negative MSE was used to identify the best predictive model.
+
+Each country's models were evaluated using the Root Mean Square Error (RMSE) between the test and training datasets, and overfittedness was tested using the R-Squared Score. Overall, the accuracy metrics indicate that each model may be overfit, with R-squared scores of 0.9998 and 0.9999 on most countries' test data. Ideally, the model's predictive capabilities are best suited for near-term predictions, no more than 3-6 months.
+
+## Limitations of the Analysis: 
+Feature relevance varies by country so results are heterogeneous; model performance depends on historical data quality and coverage. Temporal mismatches (monthly vs daily) require aggregation/aligning choices that can introduce bias. Imputation may not capture structural breaks or regime changes.
 
 - **Summary of the Analysis results:** 
     - Country-level Random Forest models successfully reduced missingness and produced plausible imputations; tuning via GridSearchCV improved predictive performance compared to default hyperparameters. Results vary by country and feature set.
