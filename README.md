@@ -72,7 +72,7 @@ Data is gathered from multiple APIs and sources (some monthly, some daily) using
 ### Data Preparation
 Data cleaning and transformations are done in the `transform` notebooks (primary work in `joined_input.ipynb`; some one-hot encoding in `impute_missing_data.ipynb`).
 
-Most missing-value handling is applied during dataset joins. Condensed:
+Most missing-value handling is applied during dataset joins:
 
 - **FRED + Oil**
     - Left-joined on `date`; duplicates checked.
@@ -108,23 +108,28 @@ Notes:
 
 The large temporal gap is due to missing data for `2024-06` and beyond, as the World Bank has yet to release data for those months, creating a reporting lag. Because of the lag in data, ML imputation is effective, as the large window of missing data can create unrealistic flatlines from forward-fill imputation. The Random Forest Regressor can incorporate other features in the dataset to produce a more accurate estimate of what to expect for that window of missing data. 
 
-Before training the Random Forest Regression models, the best features were selected for each country using the p-values computed with the sklearn.feature_selection.f_regression() function. The features with p-values less than 0.05 were selected for each country.
+Before training the Random Forest Regression models, the best features were selected for each country using the p-values computed with the `sklearn.feature_selection.f_regression()` function utilizing the `GridSearchCV()` method. The features with p-values less than `0.05` were selected for each country.
 
 Each country had its own Random Forest model trained and cross-validated across multiple hyperparameters to select the best model for predictions. The cross-validated model with the lowest negative MSE was used to identify the best predictive model.
 
-Each country's models were evaluated using the Root Mean Square Error (RMSE) between the test and training datasets, and overfittedness was tested using the R-Squared Score. Overall, the accuracy metrics indicate that each model may be overfit, with R-squared scores of 0.9998 and 0.9999 on most countries' test data. Ideally, the model's predictive capabilities are best suited for near-term predictions, no more than 3-6 months.
+**Summary of the Analysis results:** 
+Country-level Random Forest models successfully reduced missingness and produced plausible imputations; tuning via GridSearchCV improved predictive performance compared to default hyperparameters. Each country's models were evaluated using the Root Mean Square Error (RMSE) between the test and training datasets, and overfittedness was tested using the R-Squared Score. 
+
+Overall, the accuracy metrics indicate that each model may be overfit, with R-squared scores of 0.9998 and 0.9999 on most countries' test data. Ideally, the model's predictive capabilities are best suited for near-term predictions, no more than 3-6 months.
 
 ## Limitations of the Analysis: 
-Feature relevance varies by country so results are heterogeneous; model performance depends on historical data quality and coverage. Temporal mismatches (monthly vs daily) require aggregation/aligning choices that can introduce bias. Imputation may not capture structural breaks or regime changes.
+- Feature relevance varies by country, so results are heterogeneous.
+- Temporal mismatches (monthly vs daily) require aggregation/aligning choices that can introduce bias. 
+- Long-term imputation may not capture structural breaks or regime changes.
+- One-hot encoding the `months` feature and using those within the selected features caused some rows to not receive imputation, such as Australia within the month of August for any year. Eliminating `months` as a feature may be wise, since other countries' selected features relied less on it. Helping impute more rows.
 
-- **Summary of the Analysis results:** 
-    - Country-level Random Forest models successfully reduced missingness and produced plausible imputations; tuning via GridSearchCV improved predictive performance compared to default hyperparameters. Results vary by country and feature set.
+## Recommended course of action: 
+Use imputed series for exploratory forecasting and treasury planning with caveats; retrain and retune models periodically and validate imputed values against new observed data when available. For production use, adopt a monitoring process to detect drift and re-evaluate feature sets per country.
 
-- **Recommended course of action:** 
-    - Use imputed series for exploratory forecasting and treasury planning with caveats; retrain and retune models periodically and validate imputed values against new observed data when available. For production use, adopt a monitoring process to detect drift and re-evaluate feature sets per country.
+Additionally, retrain the model with the elimination of the `months` variable as a feature. See if any notible improvements appear with overfittedness and if more missing values are properly imputed.
 
-- **Benefit of the Analysis:** 
-    - Provides a practical way to fill gaps in indicator series, enabling more complete datasets for forecasting, planning, and scenario analysis—leading to faster, more informed decisions.
+## Benefit of the Analysis: 
+Provides a practical way to fill gaps in indicator series, enabling more complete datasets for forecasting, planning, and scenario analysis—leading to faster, more informed **data-driven** decisions.
 
 ## Machine Learning Skills Demonstrated:
 - Data ingestion from multiple APIs and CSV sources; handling authentication-sensitive code outside the repo (`import_datasets/` and `hardcoded_keys.py` not stored)
