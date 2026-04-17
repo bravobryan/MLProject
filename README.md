@@ -18,7 +18,7 @@ Key limitations include heterogeneous feature relevance across countries, potent
 ```
 README.md
 image-1.png
-image*2.png
+image-2.png
 ml_missing_value_impute/
 ├─ hardcoded_keys.py         # not stored in repo (private API data)
 ├─ proj_vars.py
