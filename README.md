@@ -1,5 +1,5 @@
 # MLProject — Random Forest Imputation
-### Executive Summary
+### Executive Summary - For Recruiters
 
 This project investigates whether macroeconomic and geopolitical indicators (including oil prices, the Liner Shipping Connectivity Index (LSCI), the Geopolitical Risk Index (GPR), conflict events, CPI, interest rates, and FX rates) can forecast near-term changes in a country’s foreign exchange reserves to support treasury and strategic planning decisions. Data was sourced from seven APIs and public datasets (ACLED, EIA, FRED, IMF, UNCTAD, World Bank, and the Caldara-Iacoviello GPR index), spanning daily, monthly, and quarterly frequencies. A robust data preparation pipeline was built using both pandas and PySpark to handle joins, forward-filling, outlier detection, and frequency alignment across all indicators and countries.
 
